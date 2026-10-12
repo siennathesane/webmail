@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CalendarEventUpdateOptions, IJMAPClient } from '@/lib/jmap/client-interface';
+import { calendarHooks } from '@/lib/plugin-hooks';
 import type { Calendar, CalendarEvent, CalendarParticipant, CalendarParticipantIdentity, CalendarRights, CreateCalendarOptions } from '@/lib/jmap/types';
 import { debug } from '@/lib/debug';
 import { normalizeAllDayDuration } from '@/lib/calendar-utils';
@@ -1236,6 +1237,17 @@ export const useCalendarStore = create<CalendarStore>()(
             await destroyBrowserOccurrence(client, target, sendSchedulingMessages);
           } else {
             await client.deleteCalendarEvent(realId, sendSchedulingMessages, targetAccountId);
+          }
+
+          // Notify plugins the event is gone (identity is `realId`; the
+          // JMAP uid rides on the event for scheduling-aware plugins).
+          if (storeEvent) {
+            await calendarHooks.onAfterEventDelete.emit({
+              event: storeEvent,
+              id: realId,
+              uid: storeEvent.uid ?? null,
+              isOccurrence: target.isOccurrence || target.isBrowserOccurrence,
+            });
           }
           const hadOccurrences = hasExpandedOccurrencesOf(get().events, realId, target);
           set((state) => ({
